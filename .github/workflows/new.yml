@@ -1,19 +1,25 @@
-name: Create Tags with New Repos' Authors
+name: Track New Repos with Tags
 
 on:
   schedule:
     - cron: '0 14 * * *'
-  workflow_dispatch:  # 允许手动触发
+  workflow_dispatch:
   watch:
     types: [started]
 
 jobs:
   create-tags:
     runs-on: ubuntu-latest
-
+    
+    permissions:
+      contents: write  # 必须的写入权限
+    
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # 获取完整历史记录
+        ref: main       # 明确指定基础分支
 
     - name: Set up Python
       uses: actions/setup-python@v4
@@ -27,46 +33,57 @@ jobs:
     - name: Get new repositories and create tags
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        GIT_AUTHOR_NAME: "AutoTag Bot"
-        GIT_COMMITTER_NAME: "AutoTag Bot"
       run: |
         import os
-        from github import Github
         import requests
         from datetime import datetime, timedelta
 
+        # 获取最近一周创建的高星仓库
         def get_new_repos():
             created_date = (datetime.now() - timedelta(days=7)).strftime("%Y-%m-%d")
-            url = f"https://api.github.com/search/repositories?q=created :>{created_date}+stars:>0&sort=updated&order=desc&per_page=100"
-            headers = {'Accept': 'application/vnd.github.v3+json'}
-            if 'GITHUB_TOKEN' in os.environ:
-                headers['Authorization'] = f"token {os.environ['GITHUB_TOKEN']}"
-
+            url = f"https://api.github.com/search/repositories?q=created:>={created_date}+stars:>0+is:public&sort=updated&order=desc&per_page=100"
+            headers = {
+                'Accept': 'application/vnd.github.v3+json',
+                'Authorization': f"token {os.environ['GITHUB_TOKEN']}"
+            }
+            
             response = requests.get(url, headers=headers)
+            if response.status_code != 200:
+                raise Exception(f"API请求失败: {response.status_code} - {response.text}")
+                
             repos = response.json().get('items', [])
             return [(repo['owner']['login'], repo['name']) for repo in repos]
 
         repo_data = get_new_repos()
-        print(f"Found new repositories: {repo_data}")
+        print(f"Found {len(repo_data)} new repositories")
 
-        timestamp = datetime.now().strftime("%Y%m%d%H%M")
+        # 创建新分支
+        timestamp = datetime.now().strftime("%Y%m%d")
+        branch_name = f"auto-tags-{timestamp}"
+        os.system(f"git checkout -b {branch_name}")
 
-        # 创建一个新的分支或切换到默认分支
-        os.system("git checkout -b auto-tag-branch || git checkout main")
+        # 为每个仓库创建空提交和tag
+        for i, (username, repo_name) in enumerate(repo_data[:50]):  # 限制数量
+            email = f"{username}+ghactions@users.noreply.github.com"  # 修改邮箱格式
+            tag_name = f"new/{repo_name.replace('/', '-')}/{timestamp}-{i}"  # 更安全的命名
+            
+            print(f"Processing {username}/{repo_name}")
 
-        for i, (username, repo_name) in enumerate(repo_data[:80]):
-            email = f"{username}@users.noreply.github.com"
-            tag_name = f"new-{repo_name}-{timestamp}-{i}"
+            # 创建空提交（使用环境变量设置作者信息）
+            os.system(f'''
+            export GIT_AUTHOR_NAME="{username}"
+            export GIT_AUTHOR_EMAIL="{email}"
+            export GIT_COMMITTER_NAME="GitHub Actions"
+            export GIT_COMMITTER_EMAIL="actions@github.com"
+            git commit --allow-empty -m "Track new repo: {username}/{repo_name}"
+            ''')
+            
+            # 创建轻量级tag
+            os.system(f'git tag {tag_name}')
+            
+            print(f"Created tag {tag_name}")
 
-            # 创建空提交，使用指定的邮箱
-            os.system(f'GIT_AUTHOR_NAME="{username}" GIT_AUTHOR_EMAIL="{email}" '
-                      f'GIT_COMMITTER_NAME="{username}" GIT_COMMITTER_EMAIL="{email}" '
-                      f'git commit --allow-empty -m "Empty commit for {repo_name} by {username}"')
-
-            # 创建带注释的 tag
-            os.system(f'git tag -a {tag_name} -m "Tag for new repo {repo_name} by {username}"')
-            print(f"Created tag {tag_name} with email {email}")
-
-        # 推送提交和 tags 到远程
-        os.system("git push origin auto-tag-branch --tags || git push origin main --tags")
+        # 推送分支和tags
+        os.system(f"git push origin {branch_name}")
+        os.system("git push origin --tags")
       shell: python
