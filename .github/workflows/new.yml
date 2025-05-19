@@ -2,68 +2,71 @@ name: Create Tags with New Repos' Authors
 
 on:
   schedule:
-  - cron: '0 14 * * *'
+    - cron: '0 14 * * *'
   workflow_dispatch:  # 允许手动触发
   watch:
     types: [started]
+
 jobs:
   create-tags:
     runs-on: ubuntu-latest
-    
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
-      
+
     - name: Set up Python
       uses: actions/setup-python@v4
       with:
         python-version: '3.10'
-        
+
     - name: Install dependencies
       run: |
         python -m pip install requests pygithub
-        
+
     - name: Get new repositories and create tags
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        GIT_AUTHOR_NAME: "AutoTag Bot"
+        GIT_COMMITTER_NAME: "AutoTag Bot"
       run: |
         import os
         from github import Github
         import requests
         from datetime import datetime, timedelta
-        
-        # 获取最近一周创建的高星仓库
+
         def get_new_repos():
             created_date = (datetime.now() - timedelta(days=7)).strftime("%Y-%m-%d")
-            url = f"https://api.github.com/search/repositories?q=created:>={created_date}+stars:>1&sort=updated&order=desc&per_page=1000"
-            headers = {
-                'Accept': 'application/vnd.github.v3+json'
-            }
+            url = f"https://api.github.com/search/repositories?q=created :>{created_date}+stars:>1&sort=updated&order=desc&per_page=1000"
+            headers = {'Accept': 'application/vnd.github.v3+json'}
             if 'GITHUB_TOKEN' in os.environ:
                 headers['Authorization'] = f"token {os.environ['GITHUB_TOKEN']}"
-            
+
             response = requests.get(url, headers=headers)
             repos = response.json().get('items', [])
             return [(repo['owner']['login'], repo['name']) for repo in repos]
-        
-        # 获取新仓库信息
+
         repo_data = get_new_repos()
         print(f"Found new repositories: {repo_data}")
-        
-        # 为每个仓库创建 tag
+
         timestamp = datetime.now().strftime("%Y%m%d%H%M")
-        for i, (username, repo_name) in enumerate(repo_data[:800]): 
+
+        # 创建一个新的分支或切换到默认分支
+        os.system("git checkout -b auto-tag-branch || git checkout main")
+
+        for i, (username, repo_name) in enumerate(repo_data[:800]):
             email = f"{username}@users.noreply.github.com"
             tag_name = f"new-{repo_name}-{timestamp}-{i}"
-            
-            # 配置 Git 用户信息
-            os.system(f'git config user.name "{username}"')
-            os.system(f'git config user.email "{email}"')
-            
+
+            # 创建空提交，使用指定的邮箱
+            os.system(f'GIT_AUTHOR_NAME="{username}" GIT_AUTHOR_EMAIL="{email}" '
+                      f'GIT_COMMITTER_NAME="{username}" GIT_COMMITTER_EMAIL="{email}" '
+                      f'git commit --allow-empty -m "Empty commit for {repo_name} by {username}"')
+
             # 创建带注释的 tag
             os.system(f'git tag -a {tag_name} -m "Tag for new repo {repo_name} by {username}"')
             print(f"Created tag {tag_name} with email {email}")
-        
-        # 推送所有 tags
-        os.system('git push origin --tags')
+
+        # 推送提交和 tags 到远程
+        os.system("git push origin auto-tag-branch --tags || git push origin main --tags")
       shell: python
