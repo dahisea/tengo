@@ -2,10 +2,10 @@ name: Track New Repos with Tags
 
 on:
   schedule:
-  - cron: '*/5 * * * *'
+    - cron: '25 * * * *'
+  workflow_dispatch: 
   watch:
     types: [started]
-
 jobs:
   create-tags:
     runs-on: ubuntu-latest
