@@ -2,7 +2,7 @@ name: Track New Repos with Tags
 
 on:
   schedule:
-    - cron: '*/5 * * * *'
+  - cron: '*/5 * * * *'
   watch:
     types: [started]
 
