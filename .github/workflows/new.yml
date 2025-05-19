@@ -59,8 +59,6 @@ jobs:
 
         # 创建新分支
         timestamp = datetime.now().strftime("%Y%m%d")
-        branch_name = f"auto-tags-{timestamp}"
-        os.system(f"git checkout -b {branch_name}")
 
         # 为每个仓库创建空提交和tag
         for i, (username, repo_name) in enumerate(repo_data[:1000]):  # 限制数量
@@ -84,6 +82,6 @@ jobs:
             print(f"Created tag {tag_name}")
 
         # 推送分支和tags
-        os.system(f"git push origin {branch_name}")
+        os.system(f"git push origin main")
         os.system("git push origin --tags")
       shell: python
