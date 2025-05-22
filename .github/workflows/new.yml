@@ -76,7 +76,7 @@ jobs:
             return all_repos[:max_repos]
 
         repo_data = get_all_new_repos()
-        timestamp = datetime.now().strftime("%Y%m%d")
+        timestamp = datetime.now().strftime("%Y-%m-%d-%H_%M_%S_%f")
 
         for i, (username, repo_name) in enumerate(repo_data):  
             email = f"{username}@users.noreply.github.com"  
