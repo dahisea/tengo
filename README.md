@@ -1,2 +1,1 @@
-# Repo-trending
-tracking and record repo in tags.
+parody tencent go sdk
