@@ -1,1 +1,1 @@
-parody tencent go sdk
+# parody tencent go sdk 's shit.
